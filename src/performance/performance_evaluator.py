@@ -7,12 +7,15 @@ import numpy as np
 import json
 from tabulate import tabulate
 from datetime import datetime
+from pathlib import Path
+
+script_dir = Path(__file__).parent.resolve()
 
 def parse_arguments():
     """Komut satırı argümanlarını işle"""
     parser = argparse.ArgumentParser(description='Hadoop MapReduce performans değerlendirmesi')
     parser.add_argument('--input', required=True, help='HDFS input path')
-    parser.add_argument('--output', default='performance_results.json', help='Sonuçları kaydetmek için dosya yolu')
+    parser.add_argument('--output', default=f'{script_dir}/../../results/performance_results.json', help='Sonuçları kaydetmek için dosya yolu')
     parser.add_argument('--iterations', type=int, default=3, help='Her test için çalıştırma sayısı')
     parser.add_argument('--sample-sizes', type=str, default='0.1,0.5,1.0', 
                       help='Test edilecek veri setinin boyut oranları (virgülle ayrılmış)')
@@ -78,11 +81,11 @@ def run_mapreduce_job(script_path, input_path, iteration, total_iterations):
 def evaluate_performance(sample_datasets, iterations=3):
     """Performans değerlendirmesi yap"""
     scripts = {
-        "~/Desktop/bigdata/src/mapreduce/mean_severity.py": "Ortalama",
-        "~/Desktop/bigdata/src/mapreduce/max_severity.py": "Maksimum",
-        "~/Desktop/bigdata/src/mapreduce/stddev_severity.py": "Standart Sapma",
-        "~/Desktop/bigdata/src/mapreduce/minmax_normalization.py": "Min-Max Normalizasyon",
-        "~/Desktop/bigdata/src/mapreduce/skewness.py": "Çarpıklık"
+        f"{script_dir}/../mapreduce/mean_severity.py": "Ortalama",
+        f"{script_dir}/../mapreduce/max_severity.py": "Maksimum",
+        f"{script_dir}/../mapreduce/stddev_severity.py": "Standart Sapma",
+        f"{script_dir}/../mapreduce/minmax_normalization.py": "Min-Max Normalizasyon",
+        f"{script_dir}/../mapreduce/skewness.py": "Çarpıklık"
     }
     
     results = {}
@@ -130,7 +133,7 @@ def save_results(results, output_file):
         print(f"\nHATA: Sonuçlar kaydedilemedi - {str(e)}")
         return False
 
-def plot_performance(results, output_image="performance_plot.png"):
+def plot_performance(results, output_image=f"{script_dir}/../../results/performance_plot.png"):
     """Performans sonuçlarını görselleştir"""
     if not results:
         print("Görselleştirme için yeterli veri yok")

@@ -3,10 +3,11 @@ import os
 import subprocess
 import json
 import sys
+import tempfile
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QLineEdit, QRadioButton, QPushButton, QProgressBar, 
                             QTabWidget, QTextEdit, QFrame, QGroupBox, QMessageBox, QFileDialog,
-                            QButtonGroup)
+                            QButtonGroup, QComboBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -33,6 +34,44 @@ class MapReduceWorker(QThread):
         except Exception as e:
             self.finished.emit("", str(e), -1)
 
+class HadoopFileWorker(QThread):
+    finished = pyqtSignal(str, str, int)
+    
+    def __init__(self, operation, local_path=None, hdfs_path=None):
+        super().__init__()
+        self.operation = operation  # 'upload' or 'list'
+        self.local_path = local_path
+        self.hdfs_path = hdfs_path
+        
+    def run(self):
+        try:
+            if self.operation == 'upload':
+                cmd = f"hadoop fs -put '{self.local_path}' {self.hdfs_path}"
+                process = subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True
+                )
+                stdout, stderr = process.communicate()
+                self.finished.emit(stdout, stderr, process.returncode)
+                
+            elif self.operation == 'list':
+                cmd = "hadoop fs -ls /user/student/us-accidents/data | awk '{print $8}'"
+                process = subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True
+                )
+                stdout, stderr = process.communicate()
+                self.finished.emit(stdout, stderr, process.returncode)
+                
+        except Exception as e:
+            self.finished.emit("", str(e), -1)
+
 class BigDataAnalysisApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -40,6 +79,7 @@ class BigDataAnalysisApp(QMainWindow):
         self.setGeometry(100, 100, 1000, 700)
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.output_dir = f"/user/student/us-accidents/outputs/{self.get_selected_stat()}_{uuid.uuid4().hex[:6]}"
+        self.hadoop_data_dir = "/user/student/us-accidents/data"
         
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -51,14 +91,42 @@ class BigDataAnalysisApp(QMainWindow):
         self.create_results_area()
         
         self.worker = None
+        self.hadoop_worker = None
         self.clear_results()
+        
+        # Hadoop'daki mevcut dosyaları listele
+        self.list_hadoop_files()
     
     def create_file_selection(self):
         file_group = QGroupBox("Veri Seçimi")
-        file_layout = QHBoxLayout()
-        file_layout.addWidget(QLabel("HDFS Yolu:"))
-        self.hdfs_path = QLineEdit("/user/student/us-accidents/data/US_Accidents_March23.csv")
-        file_layout.addWidget(self.hdfs_path)
+        file_layout = QVBoxLayout()
+        
+        # Local file selection
+        local_file_layout = QHBoxLayout()
+        local_file_layout.addWidget(QLabel("Yerel Dosya:"))
+        self.local_file_path = QLineEdit()
+        local_file_layout.addWidget(self.local_file_path)
+        self.browse_button = QPushButton("Gözat...")
+        self.browse_button.clicked.connect(self.browse_local_file)
+        local_file_layout.addWidget(self.browse_button)
+        self.upload_button = QPushButton("Hadoop'a Yükle")
+        self.upload_button.clicked.connect(self.upload_to_hadoop)
+        local_file_layout.addWidget(self.upload_button)
+        file_layout.addLayout(local_file_layout)
+        
+        # Hadoop file selection
+        hadoop_file_layout = QHBoxLayout()
+        hadoop_file_layout.addWidget(QLabel("HDFS Dosyası:"))
+        self.hadoop_file_combo = QComboBox()
+        self.hadoop_file_combo.setEditable(True)
+        self.hadoop_file_combo.setMinimumWidth(300)
+        self.hadoop_file_combo.addItem("/user/student/us-accidents/data/US_Accidents_March23.csv")
+        hadoop_file_layout.addWidget(self.hadoop_file_combo)
+        self.refresh_button = QPushButton("Listeyi Yenile")
+        self.refresh_button.clicked.connect(self.list_hadoop_files)
+        hadoop_file_layout.addWidget(self.refresh_button)
+        file_layout.addLayout(hadoop_file_layout)
+        
         file_group.setLayout(file_layout)
         self.main_layout.addWidget(file_group)
     
@@ -138,11 +206,100 @@ class BigDataAnalysisApp(QMainWindow):
         except:
             return "mean"
     
+    def browse_local_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "CSV Dosyası Seçin", "", "CSV Files (*.csv);;All Files (*)"
+        )
+        if file_path:
+            self.local_file_path.setText(file_path)
+    
+    def upload_to_hadoop(self):
+        local_path = self.local_file_path.text()
+        if not local_path:
+            QMessageBox.warning(self, "Uyarı", "Lütfen önce bir dosya seçin")
+            return
+        
+        if not os.path.isfile(local_path):
+            QMessageBox.critical(self, "Hata", "Dosya bulunamadı!")
+            return
+        
+        filename = os.path.basename(local_path)
+        hdfs_path = f"{self.hadoop_data_dir}/{filename}"
+        
+        # Check if file already exists in HDFS
+        check_cmd = f"hadoop fs -test -e {hdfs_path}"
+        if subprocess.call(check_cmd, shell=True) == 0:
+            reply = QMessageBox.question(
+                self, "Dosya Mevcut", 
+                f"{hdfs_path} zaten var. Üzerine yazılsın mı?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            if reply == QMessageBox.No:
+                return
+        
+        self.result_text.append(f"{local_path} dosyası {hdfs_path} konumuna yükleniyor...")
+        self.progress.setVisible(True)
+        self.set_buttons_enabled(False)
+        
+        self.hadoop_worker = HadoopFileWorker('upload', local_path, hdfs_path)
+        self.hadoop_worker.finished.connect(self.upload_finished)
+        self.hadoop_worker.start()
+    
+    def list_hadoop_files(self):
+        self.result_text.append("Hadoop'daki veri dosyaları listeleniyor...")
+        self.progress.setVisible(True)
+        self.set_buttons_enabled(False)
+        
+        self.hadoop_worker = HadoopFileWorker('list')
+        self.hadoop_worker.finished.connect(self.list_files_finished)
+        self.hadoop_worker.start()
+    
+    def upload_finished(self, stdout, stderr, return_code):
+        self.progress.setVisible(False)
+        self.set_buttons_enabled(True)
+        
+        if return_code == 0:
+            self.result_text.append("Dosya başarıyla yüklendi!\n")
+            # Listeyi güncelle
+            self.list_hadoop_files()
+        else:
+            error_msg = f"HATA (Kod: {return_code}):\n{stderr}"
+            self.result_text.append(error_msg)
+            QMessageBox.critical(self, "Yükleme Başarısız", error_msg)
+    
+    def list_files_finished(self, stdout, stderr, return_code):
+        self.progress.setVisible(False)
+        self.set_buttons_enabled(True)
+        
+        if return_code == 0:
+            files = stdout.strip().split('\n')
+            # Sadece CSV dosyalarını filtrele
+            csv_files = [f for f in files if f.lower().endswith('.csv')]
+            
+            self.hadoop_file_combo.clear()
+            if csv_files:
+                for file in csv_files:
+                    self.hadoop_file_combo.addItem(file)
+                self.result_text.append("Hadoop'daki CSV dosyaları listelendi.\n")
+            else:
+                self.hadoop_file_combo.addItem("/user/student/us-accidents/data/US_Accidents_March23.csv")
+                self.result_text.append("Hadoop'da CSV dosyası bulunamadı. Varsayılan dosya kullanılacak.\n")
+        else:
+            error_msg = f"HATA (Kod: {return_code}):\n{stderr}"
+            self.result_text.append(error_msg)
+            QMessageBox.critical(self, "Listeleme Başarısız", error_msg)
+    
+    def set_buttons_enabled(self, enabled):
+        self.browse_button.setEnabled(enabled)
+        self.upload_button.setEnabled(enabled)
+        self.refresh_button.setEnabled(enabled)
+        self.run_button.setEnabled(enabled)
+    
     def run_mapreduce_job(self):
         try:
             self.clear_results()
             stat_type = self.get_selected_stat()
-            hdfs_path = self.hdfs_path.text()
+            hdfs_path = self.hadoop_file_combo.currentText()
             self.output_dir = f"/user/student/us-accidents/outputs/{stat_type}_{uuid.uuid4().hex[:6]}"
             
             scripts = {
@@ -157,7 +314,7 @@ class BigDataAnalysisApp(QMainWindow):
                   "-r", "hadoop", f'hdfs://{hdfs_path}', "--output-dir", f'hdfs://{self.output_dir}']
             
             self.result_text.append(f"Komut çalıştırılıyor: {' '.join(cmd)}\n")
-            self.run_button.setEnabled(False)
+            self.set_buttons_enabled(False)
             self.progress.setVisible(True)
             
             self.worker = MapReduceWorker(cmd)
@@ -165,11 +322,11 @@ class BigDataAnalysisApp(QMainWindow):
             self.worker.start()
         except Exception as e:
             QMessageBox.critical(self, "Hata", str(e))
-            self.run_button.setEnabled(True)
+            self.set_buttons_enabled(True)
             self.progress.setVisible(False)
     
     def job_finished(self, stdout, stderr, return_code):
-        self.run_button.setEnabled(True)
+        self.set_buttons_enabled(True)
         self.progress.setVisible(False)
         
         if return_code != 0:
