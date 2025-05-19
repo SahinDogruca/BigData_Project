@@ -1,0 +1,8 @@
+mrjob
+matplotlib
+pandas
+numpy
+seaborn
+setuptools
+tabulate
+PyQt5
