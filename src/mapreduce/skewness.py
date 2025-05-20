@@ -6,17 +6,26 @@ import math
 
 class SkewnessSeverity(MRJob):
     """
-    MapReduce job to calculate skewness of accident severity distribution
+    MapReduce job to calculate skewness of numerical column distribution
     """
+    
+    def configure_args(self):
+        super(SkewnessSeverity, self).configure_args()
+        self.add_passthru_arg(
+            '--column', 
+            type=int, 
+            default=2,
+            help='Index of the numerical column to analyze (0-based)'
+        )
     
     def steps(self):
         return [
-            # İlk adım: Ortalama ve standart sapmayı hesapla
+            # First step: Calculate mean and standard deviation
             MRStep(mapper_init=self.mapper_init,
                    mapper=self.mapper_stats,
                    reducer=self.reducer_stats),
                    
-            # İkinci adım: Çarpıklık (Skewness) hesapla
+            # Second step: Calculate skewness
             MRStep(mapper=self.mapper_skewness,
                    reducer=self.reducer_skewness)
         ]
@@ -25,45 +34,45 @@ class SkewnessSeverity(MRJob):
         self.is_header = True
     
     def mapper_stats(self, _, line):
-        # Başlık satırını atla
+        # Skip header line
         if self.is_header:
             self.is_header = False
             return
             
         try:
-            # CSV satırını parse et
+            # Parse CSV line
             row = next(csv.reader([line]))
             
-            # Severity değerini al
-            severity_idx = 2
-            severity = int(row[severity_idx])
+            # Get value from specified column
+            column_idx = self.options.column
+            value = float(row[column_idx])
             
-            # Değeri ilet
-            yield "severity", severity
+            # Emit value
+            yield "value", value
         except Exception as e:
             yield "error", str(e)
     
     def reducer_stats(self, key, values):
-        if key == "severity":
+        if key == "value":
             all_values = list(values)
             n = len(all_values)
             
             if n > 0:
-                # Ortalama hesapla
+                # Calculate mean
                 mean = sum(all_values) / n
                 
-                # Varyans hesapla
+                # Calculate variance and standard deviation
                 variance = sum((x - mean) ** 2 for x in all_values) / n
                 std_dev = math.sqrt(variance)
                 
-                # Tüm değerleri, ortalamayı ve std_dev'i bir sonraki adıma ilet
+                # Emit all values with mean and std_dev for next step
                 for val in all_values:
                     yield None, (val, mean, std_dev, n)
     
     def mapper_skewness(self, _, value_stats):
         value, mean, std_dev, n = value_stats
         
-        # Çarpıklık formülü için pay hesabı
+        # Calculate contribution to skewness
         if std_dev > 0:
             z_score = (value - mean) / std_dev
             skewness_contribution = z_score ** 3
@@ -76,14 +85,14 @@ class SkewnessSeverity(MRJob):
         count = 0
         n = None
         
-        # Tüm katkıları topla
+        # Sum all contributions
         for skew_contrib, cnt, sample_size in values:
             sum_skewness += skew_contrib
             count += cnt
             if n is None:
                 n = sample_size
         
-        # Çarpıklık hesapla
+        # Calculate final skewness
         if n > 0:
             skewness = sum_skewness / n
             
@@ -94,14 +103,13 @@ class SkewnessSeverity(MRJob):
             }
     
     def interpret_skewness(self, skewness):
-        """Çarpıklık değerini yorumla"""
+        """Interpret the skewness value"""
         if skewness > 0.5:
-            return "Pozitif çarpıklık (Sağa eğilimli dağılım)"
+            return "Positive skew (Right-tailed distribution)"
         elif skewness < -0.5:
-            return "Negatif çarpıklık (Sola eğilimli dağılım)"
+            return "Negative skew (Left-tailed distribution)"
         else:
-            return "Yaklaşık simetrik dağılım"
+            return "Approximately symmetric distribution"
 
 if __name__ == '__main__':
     SkewnessSeverity.run()
-

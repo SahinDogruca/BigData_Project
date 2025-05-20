@@ -8,6 +8,15 @@ class MaxSeverity(MRJob):
     MapReduce job to find the maximum accident severity
     """
     
+    def configure_args(self):
+        super(MaxSeverity, self).configure_args()
+        self.add_passthru_arg(
+            '--column', 
+            type=int, 
+            default=2,
+            help='Index of the severity column (0-based)'
+        )
+    
     def mapper_init(self):
         # CSV başlıklarını atla
         self.is_header = True
@@ -22,8 +31,8 @@ class MaxSeverity(MRJob):
             # CSV satırını parse et
             row = next(csv.reader([line]))
             
-            # Severity sütununun indeksini belirle
-            severity_idx = 2
+            # Severity sütununun indeksini parametreden al
+            severity_idx = self.options.column
             
             # Severity değerini al
             severity = int(row[severity_idx])
@@ -45,4 +54,3 @@ class MaxSeverity(MRJob):
 
 if __name__ == '__main__':
     MaxSeverity.run()
-

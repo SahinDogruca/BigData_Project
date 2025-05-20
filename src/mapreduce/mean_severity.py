@@ -8,6 +8,15 @@ class MeanSeverity(MRJob):
     MapReduce job to calculate the average accident severity
     """
     
+    def configure_args(self):
+        super(MeanSeverity, self).configure_args()
+        self.add_passthru_arg(
+            '--column', 
+            type=int, 
+            default=2,
+            help='Index of the severity column (0-based)'
+        )
+    
     def mapper_init(self):
         # CSV başlıklarını atla
         self.is_header = True
@@ -22,9 +31,8 @@ class MeanSeverity(MRJob):
             # CSV satırını parse et
             row = next(csv.reader([line]))
             
-            # Severity sütununun indeksini belirle (veri setine göre ayarlanmalı)
-            # Kaggle US Accidents veri setinde Severity genellikle 3. sütundadır (0-tabanlı indeksleme)
-            severity_idx = 2
+            # Severity sütununun indeksini parametreden al
+            severity_idx = self.options.column
             
             # Severity değerini al ve sayıya çevir
             severity = int(row[severity_idx])
@@ -56,4 +64,3 @@ class MeanSeverity(MRJob):
 
 if __name__ == '__main__':
     MeanSeverity.run()
-

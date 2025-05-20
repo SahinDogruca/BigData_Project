@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import numpy as np
 import uuid
+from PyQt5.QtGui import QIntValidator
 
 class MapReduceWorker(QThread):
     finished = pyqtSignal(str, str, int)
@@ -87,6 +88,7 @@ class BigDataAnalysisApp(QMainWindow):
         
         self.create_file_selection()
         self.create_stat_selection()
+        self.create_column_selection()
         self.create_run_button()
         self.create_results_area()
         
@@ -120,7 +122,6 @@ class BigDataAnalysisApp(QMainWindow):
         self.hadoop_file_combo = QComboBox()
         self.hadoop_file_combo.setEditable(True)
         self.hadoop_file_combo.setMinimumWidth(300)
-        self.hadoop_file_combo.addItem("/user/student/us-accidents/data/US_Accidents_March23.csv")
         hadoop_file_layout.addWidget(self.hadoop_file_combo)
         self.refresh_button = QPushButton("Listeyi Yenile")
         self.refresh_button.clicked.connect(self.list_hadoop_files)
@@ -157,6 +158,21 @@ class BigDataAnalysisApp(QMainWindow):
         
         stats_group.setLayout(stats_layout)
         self.main_layout.addWidget(stats_group)
+    
+    def create_column_selection(self):
+        column_group = QGroupBox("Sütun Seçimi")
+        column_layout = QHBoxLayout()
+        
+        column_layout.addWidget(QLabel("Analiz Edilecek Sütun İndeksi:"))
+        self.column_index = QLineEdit()
+        self.column_index.setPlaceholderText("2 (Varsayılan)")
+        self.column_index.setValidator(QIntValidator(0, 100))  # Only allow numbers
+        self.column_index.setMaximumWidth(50)
+        column_layout.addWidget(self.column_index)
+        column_layout.addStretch()
+        
+        column_group.setLayout(column_layout)
+        self.main_layout.addWidget(column_group)
     
     def create_run_button(self):
         run_layout = QVBoxLayout()
@@ -205,6 +221,15 @@ class BigDataAnalysisApp(QMainWindow):
             return "mean"
         except:
             return "mean"
+    
+    def get_column_index(self):
+        try:
+            col_text = self.column_index.text()
+            if col_text:
+                return int(col_text)
+            return 2  # Default value
+        except:
+            return 2  # Default value
     
     def browse_local_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -282,7 +307,6 @@ class BigDataAnalysisApp(QMainWindow):
                     self.hadoop_file_combo.addItem(file)
                 self.result_text.append("Hadoop'daki CSV dosyaları listelendi.\n")
             else:
-                self.hadoop_file_combo.addItem("/user/student/us-accidents/data/US_Accidents_March23.csv")
                 self.result_text.append("Hadoop'da CSV dosyası bulunamadı. Varsayılan dosya kullanılacak.\n")
         else:
             error_msg = f"HATA (Kod: {return_code}):\n{stderr}"
@@ -299,6 +323,7 @@ class BigDataAnalysisApp(QMainWindow):
         try:
             self.clear_results()
             stat_type = self.get_selected_stat()
+            column_index = self.get_column_index()
             hdfs_path = self.hadoop_file_combo.currentText()
             self.output_dir = f"/user/student/us-accidents/outputs/{stat_type}_{uuid.uuid4().hex[:6]}"
             
@@ -311,9 +336,11 @@ class BigDataAnalysisApp(QMainWindow):
             }
             
             cmd = ["python", f'{self.script_dir}/../mapreduce/{scripts[stat_type]}',
-                  "-r", "hadoop", f'hdfs://{hdfs_path}', "--output-dir", f'hdfs://{self.output_dir}']
+                  "-r", "hadoop", f'hdfs://{hdfs_path}', "--output-dir", f'hdfs://{self.output_dir}',
+                  "--column", str(column_index)]
             
             self.result_text.append(f"Komut çalıştırılıyor: {' '.join(cmd)}\n")
+            self.result_text.append(f"Analiz edilen sütun indeksi: {column_index}\n")
             self.set_buttons_enabled(False)
             self.progress.setVisible(True)
             

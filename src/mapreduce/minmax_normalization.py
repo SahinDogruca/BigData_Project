@@ -5,18 +5,26 @@ import csv
 
 class MinMaxNormalization(MRJob):
     """
-    MapReduce job to normalize numerical features (e.g., Temperature)
-    using min-max normalization
+    MapReduce job to normalize numerical features using min-max normalization
     """
+    
+    def configure_args(self):
+        super(MinMaxNormalization, self).configure_args()
+        self.add_passthru_arg(
+            '--column', 
+            type=int, 
+            default=9,
+            help='Index of the numerical column to normalize (0-based)'
+        )
     
     def steps(self):
         return [
-            # İlk adım: Min ve Max değerlerini bul
+            # First step: Find Min and Max values
             MRStep(mapper_init=self.mapper_init,
                    mapper=self.mapper_find_min_max,
                    reducer=self.reducer_find_min_max),
                    
-            # İkinci adım: Normalizasyon uygula
+            # Second step: Apply normalization
             MRStep(mapper=self.mapper_normalize,
                    reducer=self.reducer_normalize)
         ]
@@ -25,45 +33,44 @@ class MinMaxNormalization(MRJob):
         self.is_header = True
     
     def mapper_find_min_max(self, _, line):
-        # Başlık satırını atla
+        # Skip header line
         if self.is_header:
             self.is_header = False
             return
             
         try:
-            # CSV satırını parse et
+            # Parse CSV line
             row = next(csv.reader([line]))
             
-            # Sıcaklık sütununun indeksini belirle (örneğin - veri setine göre ayarlanmalı)
-            # Kaggle US Accidents veri setinde Temperature(F) sütunu olabilir
-            temperature_idx = 9  # Örneğin - doğru indeksi kontrol edin
+            # Get column index from command line argument
+            column_idx = self.options.column
             
-            # Değeri al
-            temp_str = row[temperature_idx]
-            if temp_str and temp_str != "":
-                temperature = float(temp_str)
+            # Get value from specified column
+            value_str = row[column_idx]
+            if value_str and value_str != "":
+                value = float(value_str)
                 
-                # Min ve max bulma için aynı anahtarla döndür
-                yield "temperature", temperature
+                # Emit for min/max calculation
+                yield "value", value
         except Exception as e:
             yield "error", str(e)
     
     def reducer_find_min_max(self, key, values):
-        if key == "temperature":
-            # Listenin tamamını al
+        if key == "value":
+            # Get all values
             all_values = list(values)
             if all_values:
                 min_val = min(all_values)
                 max_val = max(all_values)
                 
-                # Min, max ve tüm değerleri bir sonraki adıma ilet
+                # Emit each value with min and max for normalization
                 for val in all_values:
                     yield None, (val, min_val, max_val)
     
     def mapper_normalize(self, _, value_min_max):
         value, min_val, max_val = value_min_max
         
-        # Min-max normalizasyonu uygula
+        # Apply min-max normalization
         range_val = max_val - min_val
         if range_val > 0:
             normalized = (value - min_val) / range_val
@@ -73,10 +80,10 @@ class MinMaxNormalization(MRJob):
         yield "normalized", (value, normalized)
     
     def reducer_normalize(self, key, values):
-        # İlk 10 örnek değeri ve onların normalize edilmiş değerlerini döndür
+        # Output first 10 samples with original and normalized values
         count = 0
         for original, normalized in values:
-            if count < 10:  # Sadece örnek olarak ilk 10 değeri göster
+            if count < 10:  # Show first 10 values as examples
                 yield count, {
                     "original": original,
                     "normalized": normalized
@@ -85,4 +92,3 @@ class MinMaxNormalization(MRJob):
 
 if __name__ == '__main__':
     MinMaxNormalization.run()
-
