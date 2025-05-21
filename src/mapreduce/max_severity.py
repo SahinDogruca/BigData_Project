@@ -3,45 +3,42 @@ from mrjob.job import MRJob
 from mrjob.step import MRStep
 import csv
 
+
 class MaxSeverity(MRJob):
     """
     MapReduce job to find the maximum accident severity
     """
-    
+
     def configure_args(self):
         super(MaxSeverity, self).configure_args()
         self.add_passthru_arg(
-            '--column', 
-            type=int, 
+            "--column",
+            type=int,
             default=2,
-            help='Index of the severity column (0-based)'
+            help="Index of the severity column (0-based)",
         )
-    
+
     def mapper_init(self):
         # CSV başlıklarını atla
         self.is_header = True
-        
+
     def mapper(self, _, line):
         # Başlık satırını atla
         if self.is_header:
             self.is_header = False
             return
-            
+
         try:
             # CSV satırını parse et
             row = next(csv.reader([line]))
-            
-            # Severity sütununun indeksini parametreden al
-            severity_idx = self.options.column
-            
-            # Severity değerini al
-            severity = int(row[severity_idx])
-            
-            # Severity değerini anahtar olarak döndür
-            yield "max_severity", severity
+
+            idx = self.options.column
+            value = int(row[idx])
+
+            yield "max_severity", value
         except Exception as e:
             yield "error", str(e)
-    
+
     def reducer(self, key, values):
         if key == "max_severity":
             # Maximum değeri bul
@@ -52,5 +49,7 @@ class MaxSeverity(MRJob):
             for value in values:
                 yield key, value
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     MaxSeverity.run()
+
