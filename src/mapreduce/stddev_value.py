@@ -4,31 +4,32 @@ from mrjob.step import MRStep
 import csv
 import math
 
-class StdDevSeverity(MRJob):
+
+class StdDevValue(MRJob):
     """
     MapReduce job to calculate standard deviation of a numerical column
     (implements two-pass algorithm for std dev calculation)
     """
 
     def configure_args(self):
-        super(StdDevSeverity, self).configure_args()
+        super(StdDevValue, self).configure_args()
         self.add_passthru_arg(
-            '--column',
+            "--column",
             type=int,
             default=2,
-            help='Index of the numerical column to analyze (0-based)'
+            help="Index of the numerical column to analyze (0-based)",
         )
 
     def steps(self):
         return [
             # First step: Calculate mean
-            MRStep(mapper_init=self.mapper_init,
-                   mapper=self.mapper_mean,
-                   reducer=self.reducer_mean),
-
+            MRStep(
+                mapper_init=self.mapper_init,
+                mapper=self.mapper_mean,
+                reducer=self.reducer_mean,
+            ),
             # Second step: Calculate variance and standard deviation
-            MRStep(mapper=self.mapper_variance,
-                   reducer=self.reducer_variance)
+            MRStep(mapper=self.mapper_variance, reducer=self.reducer_variance),
         ]
 
     def mapper_init(self):
@@ -43,7 +44,6 @@ class StdDevSeverity(MRJob):
         try:
             # Parse CSV line
             row = next(csv.reader([line]))
-
 
             column_idx = self.options.column
             value = float(row[column_idx])
@@ -98,11 +98,9 @@ class StdDevSeverity(MRJob):
             variance = sum_squared_diff / count
             std_dev = math.sqrt(variance)
 
-            yield "statistics", {
-                "mean": mean,
-                "std_dev": std_dev,
-                "count": count
-            }
+            yield "statistics", {"mean": mean, "std_dev": std_dev, "count": count}
 
-if __name__ == '__main__':
-    StdDevSeverity.run()
+
+if __name__ == "__main__":
+    StdDevValue.run()
+

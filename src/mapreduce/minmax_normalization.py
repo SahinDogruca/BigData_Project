@@ -3,6 +3,7 @@ from mrjob.job import MRJob
 from mrjob.step import MRStep
 import csv
 
+
 class MinMaxNormalization(MRJob):
     """
     MapReduce job to normalize numerical features using min-max normalization
@@ -11,22 +12,22 @@ class MinMaxNormalization(MRJob):
     def configure_args(self):
         super(MinMaxNormalization, self).configure_args()
         self.add_passthru_arg(
-            '--column',
+            "--column",
             type=int,
             default=9,
-            help='Index of the numerical column to normalize (0-based)'
+            help="Index of the numerical column to normalize (0-based)",
         )
 
     def steps(self):
         return [
             # First step: Find Min and Max values
-            MRStep(mapper_init=self.mapper_init,
-                   mapper=self.mapper_find_min_max,
-                   reducer=self.reducer_find_min_max),
-
+            MRStep(
+                mapper_init=self.mapper_init,
+                mapper=self.mapper_find_min_max,
+                reducer=self.reducer_find_min_max,
+            ),
             # Second step: Apply normalization
-            MRStep(mapper=self.mapper_normalize,
-                   reducer=self.reducer_normalize)
+            MRStep(mapper=self.mapper_normalize, reducer=self.reducer_normalize),
         ]
 
     def mapper_init(self):
@@ -41,7 +42,6 @@ class MinMaxNormalization(MRJob):
         try:
             # Parse CSV line
             row = next(csv.reader([line]))
-
 
             column_idx = self.options.column
 
@@ -84,11 +84,10 @@ class MinMaxNormalization(MRJob):
         count = 0
         for original, normalized in values:
             if count < 10:  # Show first 10 values as examples
-                yield count, {
-                    "original": original,
-                    "normalized": normalized
-                }
+                yield count, {"original": original, "normalized": normalized}
                 count += 1
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     MinMaxNormalization.run()
+

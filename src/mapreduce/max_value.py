@@ -4,13 +4,13 @@ from mrjob.step import MRStep
 import csv
 
 
-class MaxSeverity(MRJob):
+class MaxValue(MRJob):
     """
     MapReduce job to find the maximum accident severity
     """
 
     def configure_args(self):
-        super(MaxSeverity, self).configure_args()
+        super(MaxValue, self).configure_args()
         self.add_passthru_arg(
             "--column",
             type=int,
@@ -35,15 +35,15 @@ class MaxSeverity(MRJob):
             idx = self.options.column
             value = int(row[idx])
 
-            yield "max_severity", value
+            yield "max_value", value
         except Exception as e:
             yield "error", str(e)
 
     def reducer(self, key, values):
-        if key == "max_severity":
+        if key == "max_value":
             # Maximum değeri bul
-            max_severity = max(values)
-            yield key, max_severity
+            max_value = max(values)
+            yield key, max_value
         else:
             # Hataları loglama
             for value in values:
@@ -51,5 +51,4 @@ class MaxSeverity(MRJob):
 
 
 if __name__ == "__main__":
-    MaxSeverity.run()
-
+    MaxValue.run()
